@@ -146,6 +146,7 @@ PLATFORMS = [
     Platform.TEXT,
     Platform.UPDATE,
     Platform.VACUUM,
+    Platform.VALVE,
     Platform.WATER_HEATER,
 ]
 
@@ -173,5 +174,6 @@ RELOADABLE_PLATFORMS = [
     Platform.TEXT,
     Platform.UPDATE,
     Platform.VACUUM,
+    Platform.VALVE,
     Platform.WATER_HEATER,
 ]
