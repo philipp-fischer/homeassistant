@@ -518,7 +518,7 @@ class ClimateEntity(Entity):
     @final
     async def async_handle_set_fan_mode_service(self, fan_mode: str) -> None:
         """Validate and set new preset mode."""
-        if self.fan_modes:
+        if self.fan_modes is not None:
             self._valid_mode_or_raise("fan", fan_mode, self.fan_modes)
             await self.async_set_fan_mode(fan_mode)
 
@@ -541,7 +541,7 @@ class ClimateEntity(Entity):
     @final
     async def async_handle_set_swing_mode_service(self, swing_mode: str) -> None:
         """Validate and set new preset mode."""
-        if self.swing_modes:
+        if self.swing_modes is not None:
             self._valid_mode_or_raise("swing", swing_mode, self.swing_modes)
             await self.async_set_swing_mode(swing_mode)
 
@@ -556,7 +556,7 @@ class ClimateEntity(Entity):
     @final
     async def async_handle_set_preset_mode_service(self, preset_mode: str) -> None:
         """Validate and set new preset mode."""
-        if self.preset_modes:
+        if self.preset_modes is not None:
             self._valid_mode_or_raise("preset", preset_mode, self.preset_modes)
             await self.async_set_preset_mode(preset_mode)
 
