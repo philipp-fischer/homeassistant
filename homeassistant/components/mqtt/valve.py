@@ -69,6 +69,8 @@ CONF_STATE_CLOSING = "state_closing"
 CONF_STATE_OPEN = "state_open"
 CONF_STATE_OPENING = "state_opening"
 
+CONF_STOP_COMMAND_TOPIC = "stop_command_topic"
+
 DEFAULT_NAME = "MQTT Valve"
 DEFAULT_PAYLOAD_CLOSE = "CLOSE"
 DEFAULT_PAYLOAD_OPEN = "OPEN"
@@ -102,6 +104,7 @@ _PLATFORM_SCHEMA_BASE = MQTT_BASE_SCHEMA.extend(
         vol.Optional(CONF_STATE_OPEN, default=STATE_OPEN): cv.string,
         vol.Optional(CONF_STATE_OPENING, default=STATE_OPENING): cv.string,
         vol.Optional(CONF_STATE_TOPIC): valid_subscribe_topic,
+        vol.Optional(CONF_STOP_COMMAND_TOPIC): valid_publish_topic,
         vol.Optional(CONF_VALUE_TEMPLATE): cv.template,
     }
 ).extend(MQTT_ENTITY_COMMON_SCHEMA.schema)
@@ -323,8 +326,10 @@ class MqttValve(MqttEntity, ValveEntity):
         This method is a coroutine.
         """
         payload = self._command_template(self._config[CONF_PAYLOAD_STOP])
+        if (command_topic := self._config.get(CONF_STOP_COMMAND_TOPIC)) is None:
+            command_topic = self._config[CONF_COMMAND_TOPIC]
         await self.async_publish(
-            self._config[CONF_COMMAND_TOPIC],
+            command_topic,
             payload,
             self._config[CONF_QOS],
             self._config[CONF_RETAIN],

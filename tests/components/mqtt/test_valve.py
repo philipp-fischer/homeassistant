@@ -317,6 +317,58 @@ async def tests_controling_valve_by_state(
                     "name": "test",
                     "state_topic": "state-topic",
                     "command_topic": "command-topic",
+                    "stop_command_topic": "stop-command-topic",
+                    "payload_stop": "STOP",
+                }
+            }
+        }
+    ],
+)
+@pytest.mark.parametrize(
+    ("service", "asserted_message", "asserted_topic"),
+    [
+        (SERVICE_CLOSE_VALVE, "CLOSE", "command-topic"),
+        (SERVICE_OPEN_VALVE, "OPEN", "command-topic"),
+        (SERVICE_STOP_VALVE, "STOP", "stop-command-topic"),
+    ],
+)
+async def tests_stopping_valve_with_stop_command_topic(
+    hass: HomeAssistant,
+    mqtt_mock_entry: MqttMockHAClientGenerator,
+    service: str,
+    asserted_message: str,
+    asserted_topic: str,
+) -> None:
+    """Test controlling and stopping a valve."""
+    mqtt_mock = await mqtt_mock_entry()
+
+    state = hass.states.get("valve.test")
+    assert state.state == STATE_UNKNOWN
+
+    await hass.services.async_call(
+        valve.DOMAIN,
+        service,
+        {ATTR_ENTITY_ID: "valve.test"},
+        blocking=True,
+    )
+
+    mqtt_mock.async_publish.assert_called_once_with(
+        asserted_topic, asserted_message, 0, False
+    )
+
+    state = hass.states.get("valve.test")
+    assert state.state == STATE_UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "hass_config",
+    [
+        {
+            mqtt.DOMAIN: {
+                valve.DOMAIN: {
+                    "name": "test",
+                    "state_topic": "state-topic",
+                    "command_topic": "command-topic",
                     "payload_stop": "STOP",
                     "optimistic": True,
                 }

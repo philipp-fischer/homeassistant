@@ -222,6 +222,7 @@ ABBREVIATIONS = {
     "stat_tpl": "state_template",
     "stat_val_tpl": "state_value_template",
     "step": "step",
+    "stop_cmd_t": "stop_command_topic",
     "strt_mw_cmd_t": "start_mowing_command_topic",
     "strt_mw_cmd_tpl": "start_mowing_command_template",
     "stype": "subtype",
