@@ -6,7 +6,11 @@ import pytest
 
 from homeassistant.components import mqtt, valve
 from homeassistant.components.mqtt.valve import MQTT_VALVE_ATTRIBUTES_BLOCKED
-from homeassistant.components.valve import ATTR_CURRENT_POSITION
+from homeassistant.components.valve import (
+    ATTR_CURRENT_POSITION,
+    ATTR_POSITION,
+    SERVICE_SET_VALVE_POSITION,
+)
 from homeassistant.const import (
     ATTR_ASSUMED_STATE,
     ATTR_ENTITY_ID,
@@ -250,6 +254,68 @@ async def test_state_via_state_topic_through_position(
 
     Test is still possible to process a `opening` or `closing` state update.
     Additional we test json messages can be processed containing both position and state.
+    Incoming rendered positions are clamped between 0..100.
+    """
+    await mqtt_mock_entry()
+
+    state = hass.states.get("valve.test")
+    assert state.state == STATE_UNKNOWN
+    assert not state.attributes.get(ATTR_ASSUMED_STATE)
+
+    async_fire_mqtt_message(hass, "state-topic", message)
+
+    state = hass.states.get("valve.test")
+    assert state.state == asserted_state
+    assert state.attributes.get(ATTR_CURRENT_POSITION) == valve_position
+
+
+@pytest.mark.parametrize(
+    "hass_config",
+    [
+        {
+            mqtt.DOMAIN: {
+                valve.DOMAIN: {
+                    "name": "test",
+                    "state_topic": "state-topic",
+                    "command_topic": "command-topic",
+                    "position": True,
+                    "position_closed": -128,
+                    "position_open": 127,
+                }
+            }
+        }
+    ],
+)
+@pytest.mark.parametrize(
+    ("message", "asserted_state", "valve_position"),
+    [
+        ("-128", STATE_CLOSED, 0),
+        ("0", STATE_OPEN, 50),
+        ("127", STATE_OPEN, 100),
+        ("-130", STATE_CLOSED, 0),
+        ("130", STATE_OPEN, 100),
+        ('{"position": -128, "state": "opening"}', STATE_OPENING, 0),
+        ('{"position": -30, "state": "opening"}', STATE_OPENING, 38),
+        ('{"position": 30, "state": "open"}', STATE_OPEN, 61),
+        ('{"position": 127, "state": "closing"}', STATE_CLOSING, 100),
+        ('{"position": 100, "state": "closing"}', STATE_CLOSING, 89),
+        ('{"position": -128, "state": "closed"}', STATE_CLOSED, 0),
+        ('{"position": -130, "state": "closed"}', STATE_CLOSED, 0),
+        ('{"position": 130, "state": "open"}', STATE_OPEN, 100),
+    ],
+)
+async def test_state_via_state_trough_position_with_alt_range(
+    hass: HomeAssistant,
+    mqtt_mock_entry: MqttMockHAClientGenerator,
+    message: str,
+    asserted_state: str,
+    valve_position: int | None,
+) -> None:
+    """Test the controlling state via topic through position and an alternative range.
+
+    Test is still possible to process a `opening` or `closing` state update.
+    Additional we test json messages can be processed containing both position and state.
+    Incoming rendered positions are clamped between 0..100.
     """
     await mqtt_mock_entry()
 
@@ -486,6 +552,217 @@ async def tests_controling_valve_by_position(
                     "name": "test",
                     "state_topic": "state-topic",
                     "command_topic": "command-topic",
+                    "payload_stop": "-1",
+                    "position": True,
+                }
+            }
+        }
+    ],
+)
+@pytest.mark.parametrize(
+    ("position", "asserted_message"),
+    [
+        (0, "0"),
+        (30, "30"),
+        (100, "100"),
+    ],
+)
+async def tests_controling_valve_by_set_valve_position(
+    hass: HomeAssistant,
+    mqtt_mock_entry: MqttMockHAClientGenerator,
+    position: int,
+    asserted_message: str,
+) -> None:
+    """Test controlling a valve by position."""
+    mqtt_mock = await mqtt_mock_entry()
+
+    state = hass.states.get("valve.test")
+    assert state.state == STATE_UNKNOWN
+
+    await hass.services.async_call(
+        valve.DOMAIN,
+        SERVICE_SET_VALVE_POSITION,
+        {ATTR_ENTITY_ID: "valve.test", ATTR_POSITION: position},
+        blocking=True,
+    )
+
+    mqtt_mock.async_publish.assert_called_once_with(
+        "command-topic", asserted_message, 0, False
+    )
+
+    state = hass.states.get("valve.test")
+    assert state.state == STATE_UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "hass_config",
+    [
+        {
+            mqtt.DOMAIN: {
+                valve.DOMAIN: {
+                    "name": "test",
+                    "state_topic": "state-topic",
+                    "command_topic": "command-topic",
+                    "payload_stop": "-1",
+                    "position": True,
+                    "optimistic": True,
+                }
+            }
+        }
+    ],
+)
+@pytest.mark.parametrize(
+    ("position", "asserted_message", "asserted_position", "asserted_state"),
+    [
+        (0, "0", 0, STATE_CLOSED),
+        (30, "30", 30, STATE_OPEN),
+        (100, "100", 100, STATE_OPEN),
+    ],
+)
+async def tests_controling_valve_optimistic_by_set_valve_position(
+    hass: HomeAssistant,
+    mqtt_mock_entry: MqttMockHAClientGenerator,
+    position: int,
+    asserted_message: str,
+    asserted_position: int,
+    asserted_state: str,
+) -> None:
+    """Test controlling a valve optimistic by position."""
+    mqtt_mock = await mqtt_mock_entry()
+
+    state = hass.states.get("valve.test")
+    assert state.state == STATE_UNKNOWN
+
+    await hass.services.async_call(
+        valve.DOMAIN,
+        SERVICE_SET_VALVE_POSITION,
+        {ATTR_ENTITY_ID: "valve.test", ATTR_POSITION: position},
+        blocking=True,
+    )
+
+    mqtt_mock.async_publish.assert_called_once_with(
+        "command-topic", asserted_message, 0, False
+    )
+
+    state = hass.states.get("valve.test")
+    assert state.state == asserted_state
+    assert state.attributes.get(ATTR_CURRENT_POSITION) == asserted_position
+
+
+@pytest.mark.parametrize(
+    "hass_config",
+    [
+        {
+            mqtt.DOMAIN: {
+                valve.DOMAIN: {
+                    "name": "test",
+                    "state_topic": "state-topic",
+                    "command_topic": "command-topic",
+                    "payload_stop": "-1",
+                    "position": True,
+                    "position_closed": -128,
+                    "position_open": 127,
+                }
+            }
+        }
+    ],
+)
+@pytest.mark.parametrize(
+    ("position", "asserted_message"),
+    [
+        (0, "-128"),
+        (30, "-52"),
+        (80, "76"),
+        (100, "127"),
+    ],
+)
+async def tests_controling_valve_with_alt_range_by_set_valve_position(
+    hass: HomeAssistant,
+    mqtt_mock_entry: MqttMockHAClientGenerator,
+    position: int,
+    asserted_message: str,
+) -> None:
+    """Test controlling a valve with an alt range by position."""
+    mqtt_mock = await mqtt_mock_entry()
+
+    state = hass.states.get("valve.test")
+    assert state.state == STATE_UNKNOWN
+
+    await hass.services.async_call(
+        valve.DOMAIN,
+        SERVICE_SET_VALVE_POSITION,
+        {ATTR_ENTITY_ID: "valve.test", ATTR_POSITION: position},
+        blocking=True,
+    )
+
+    mqtt_mock.async_publish.assert_called_once_with(
+        "command-topic", asserted_message, 0, False
+    )
+
+    state = hass.states.get("valve.test")
+    assert state.state == STATE_UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "hass_config",
+    [
+        {
+            mqtt.DOMAIN: {
+                valve.DOMAIN: {
+                    "name": "test",
+                    "state_topic": "state-topic",
+                    "command_topic": "command-topic",
+                    "position": True,
+                    "position_closed": -128,
+                    "position_open": 127,
+                }
+            }
+        }
+    ],
+)
+@pytest.mark.parametrize(
+    ("service", "asserted_message"),
+    [
+        (SERVICE_CLOSE_VALVE, "-128"),
+        (SERVICE_OPEN_VALVE, "127"),
+    ],
+)
+async def tests_controling_valve_with_alt_range_by_position(
+    hass: HomeAssistant,
+    mqtt_mock_entry: MqttMockHAClientGenerator,
+    service: str,
+    asserted_message: str,
+) -> None:
+    """Test controlling a valve with an alt range by position."""
+    mqtt_mock = await mqtt_mock_entry()
+
+    state = hass.states.get("valve.test")
+    assert state.state == STATE_UNKNOWN
+
+    await hass.services.async_call(
+        valve.DOMAIN,
+        service,
+        {ATTR_ENTITY_ID: "valve.test"},
+        blocking=True,
+    )
+
+    mqtt_mock.async_publish.assert_called_once_with(
+        "command-topic", asserted_message, 0, False
+    )
+
+    state = hass.states.get("valve.test")
+    assert state.state == STATE_UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "hass_config",
+    [
+        {
+            mqtt.DOMAIN: {
+                valve.DOMAIN: {
+                    "name": "test",
+                    "state_topic": "state-topic",
+                    "command_topic": "command-topic",
                     "payload_stop": "STOP",
                     "optimistic": True,
                     "position": True,
@@ -540,6 +817,64 @@ async def tests_controling_valve_by_position_optimistic(
     state = hass.states.get("valve.test")
     assert state.state == asserted_state
     assert state.attributes[ATTR_CURRENT_POSITION] == asserted_position
+
+
+@pytest.mark.parametrize(
+    "hass_config",
+    [
+        {
+            mqtt.DOMAIN: {
+                valve.DOMAIN: {
+                    "name": "test",
+                    "state_topic": "state-topic",
+                    "command_topic": "command-topic",
+                    "payload_stop": "-1",
+                    "position": True,
+                    "optimistic": True,
+                    "position_closed": -128,
+                    "position_open": 127,
+                }
+            }
+        }
+    ],
+)
+@pytest.mark.parametrize(
+    ("position", "asserted_message", "asserted_position", "asserted_state"),
+    [
+        (0, "-128", 0, STATE_CLOSED),
+        (30, "-52", 30, STATE_OPEN),
+        (50, "0", 50, STATE_OPEN),
+        (100, "127", 100, STATE_OPEN),
+    ],
+)
+async def tests_controling_valve_optimistic_alt_trange_by_set_valve_position(
+    hass: HomeAssistant,
+    mqtt_mock_entry: MqttMockHAClientGenerator,
+    position: int,
+    asserted_message: str,
+    asserted_position: int,
+    asserted_state: str,
+) -> None:
+    """Test controlling a valve optimistic and alt range by position."""
+    mqtt_mock = await mqtt_mock_entry()
+
+    state = hass.states.get("valve.test")
+    assert state.state == STATE_UNKNOWN
+
+    await hass.services.async_call(
+        valve.DOMAIN,
+        SERVICE_SET_VALVE_POSITION,
+        {ATTR_ENTITY_ID: "valve.test", ATTR_POSITION: position},
+        blocking=True,
+    )
+
+    mqtt_mock.async_publish.assert_called_once_with(
+        "command-topic", asserted_message, 0, False
+    )
+
+    state = hass.states.get("valve.test")
+    assert state.state == asserted_state
+    assert state.attributes.get(ATTR_CURRENT_POSITION) == asserted_position
 
 
 @pytest.mark.parametrize("hass_config", [DEFAULT_CONFIG])
