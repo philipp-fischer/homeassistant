@@ -89,6 +89,10 @@ def valve_platform_only():
         ("closed", STATE_CLOSED),
         ("closing", STATE_CLOSING),
         ("opening", STATE_OPENING),
+        ('{"state" : "open"}', STATE_OPEN),
+        ('{"state" : "closed"}', STATE_CLOSED),
+        ('{"state" : "closing"}', STATE_CLOSING),
+        ('{"state" : "opening"}', STATE_OPENING),
     ],
 )
 async def test_state_via_state_topic_no_position(
@@ -97,7 +101,7 @@ async def test_state_via_state_topic_no_position(
     message: str,
     asserted_state: str,
 ) -> None:
-    """Test the controlling state via topic without position."""
+    """Test the controlling state via topic without position and without template."""
     await mqtt_mock_entry()
 
     state = hass.states.get("valve.test")
@@ -217,8 +221,18 @@ async def test_state_via_state_topic_with_position_template(
     ("message", "asserted_state"),
     [
         ("0", STATE_CLOSED),
+        ("opening", STATE_OPENING),
         ("50", STATE_OPEN),
+        ("closing", STATE_CLOSING),
         ("100", STATE_OPEN),
+        ("open", STATE_UNKNOWN),
+        ("closed", STATE_UNKNOWN),
+        ('{"position": 0, "state": "opening"}', STATE_OPENING),
+        ('{"position": 10, "state": "opening"}', STATE_OPENING),
+        ('{"position": 50, "state": "open"}', STATE_OPEN),
+        ('{"position": 100, "state": "closing"}', STATE_CLOSING),
+        ('{"position": 90, "state": "closing"}', STATE_CLOSING),
+        ('{"position": 0, "state": "closed"}', STATE_CLOSED),
     ],
 )
 async def test_state_via_state_topic_through_position(
@@ -227,7 +241,11 @@ async def test_state_via_state_topic_through_position(
     message: str,
     asserted_state: str,
 ) -> None:
-    """Test the controlling state via topic through position."""
+    """Test the controlling state via topic through position.
+
+    Test is still possible to process a `opening` or `closing` state update.
+    Additional we test json messages can be processed containing both position and state.
+    """
     await mqtt_mock_entry()
 
     state = hass.states.get("valve.test")

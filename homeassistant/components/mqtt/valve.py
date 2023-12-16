@@ -1,7 +1,9 @@
 """Support for MQTT valve devices."""
 from __future__ import annotations
 
+from contextlib import suppress
 import logging
+from typing import Any
 
 import voluptuous as vol
 
@@ -26,6 +28,7 @@ from homeassistant.core import HomeAssistant, callback
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util.json import JSON_DECODE_EXCEPTIONS, json_loads
 from homeassistant.util.percentage import (
     percentage_to_ranged_value,
     ranged_value_to_percentage,
@@ -211,35 +214,47 @@ class MqttValve(MqttEntity, ValveEntity):
             },
         )
         def state_message_received(msg: ReceiveMessage) -> None:
-            """Handle new MQT/T state messages."""
+            """Handle new MQTT state messages."""
+            payload_dict: Any = None
+            position_payload: Any = None
+            state_payload: Any = None
             payload = self._value_template(msg.payload)
 
             if not payload:
                 _LOGGER.debug("Ignoring empty state message from '%s'", msg.topic)
                 return
 
-            if self._config[CONF_POSITION]:
+            with suppress(*JSON_DECODE_EXCEPTIONS):
+                payload_dict = json_loads(payload)
+            if isinstance(payload_dict, dict) and "position" in payload_dict:
+                position_payload = payload_dict["position"]
+            if isinstance(payload_dict, dict) and "state" in payload_dict:
+                state_payload = payload_dict["state"]
+            state_payload = payload if state_payload is None else state_payload
+            position_payload = payload if position_payload is None else position_payload
+
+            state: str | None = None
+            if state_payload == self._config[CONF_STATE_OPENING]:
+                state = STATE_OPENING
+            elif state_payload == self._config[CONF_STATE_CLOSING]:
+                state = STATE_CLOSING
+            elif state_payload == self._config[CONF_STATE_OPEN]:
+                state = STATE_OPEN
+            elif state_payload == self._config[CONF_STATE_CLOSED]:
+                state = STATE_CLOSED
+            if self._config[CONF_POSITION] and (
+                state is None or position_payload != state_payload
+            ):
                 try:
                     percentage_payload = ranged_value_to_percentage(
-                        self._range, float(payload)
+                        self._range, float(position_payload)
                     )
                 except ValueError:
-                    _LOGGER.warning("Payload '%s' is not numeric", payload)
+                    _LOGGER.warning("Payload '%s' is not numeric", position_payload)
                     return
 
                 self._attr_current_valve_position = percentage_payload
-                return
-
-            state: str
-            if payload == self._config[CONF_STATE_OPENING]:
-                state = STATE_OPENING
-            elif payload == self._config[CONF_STATE_CLOSING]:
-                state = STATE_CLOSING
-            elif payload == self._config[CONF_STATE_OPEN]:
-                state = STATE_OPEN
-            elif payload == self._config[CONF_STATE_CLOSED]:
-                state = STATE_CLOSED
-            else:
+            if state is None:
                 _LOGGER.warning(
                     (
                         "Payload is not supported (e.g. open, closed, opening, closing)"
