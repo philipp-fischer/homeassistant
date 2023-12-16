@@ -218,21 +218,25 @@ async def test_state_via_state_topic_with_position_template(
     ],
 )
 @pytest.mark.parametrize(
-    ("message", "asserted_state"),
+    ("message", "asserted_state", "valve_position"),
     [
-        ("0", STATE_CLOSED),
-        ("opening", STATE_OPENING),
-        ("50", STATE_OPEN),
-        ("closing", STATE_CLOSING),
-        ("100", STATE_OPEN),
-        ("open", STATE_UNKNOWN),
-        ("closed", STATE_UNKNOWN),
-        ('{"position": 0, "state": "opening"}', STATE_OPENING),
-        ('{"position": 10, "state": "opening"}', STATE_OPENING),
-        ('{"position": 50, "state": "open"}', STATE_OPEN),
-        ('{"position": 100, "state": "closing"}', STATE_CLOSING),
-        ('{"position": 90, "state": "closing"}', STATE_CLOSING),
-        ('{"position": 0, "state": "closed"}', STATE_CLOSED),
+        ("0", STATE_CLOSED, 0),
+        ("opening", STATE_OPENING, None),
+        ("50", STATE_OPEN, 50),
+        ("closing", STATE_CLOSING, None),
+        ("100", STATE_OPEN, 100),
+        ("open", STATE_UNKNOWN, None),
+        ("closed", STATE_UNKNOWN, None),
+        ("-10", STATE_CLOSED, 0),
+        ("110", STATE_OPEN, 100),
+        ('{"position": 0, "state": "opening"}', STATE_OPENING, 0),
+        ('{"position": 10, "state": "opening"}', STATE_OPENING, 10),
+        ('{"position": 50, "state": "open"}', STATE_OPEN, 50),
+        ('{"position": 100, "state": "closing"}', STATE_CLOSING, 100),
+        ('{"position": 90, "state": "closing"}', STATE_CLOSING, 90),
+        ('{"position": 0, "state": "closed"}', STATE_CLOSED, 0),
+        ('{"position": -10, "state": "closed"}', STATE_CLOSED, 0),
+        ('{"position": 110, "state": "open"}', STATE_OPEN, 100),
     ],
 )
 async def test_state_via_state_topic_through_position(
@@ -240,6 +244,7 @@ async def test_state_via_state_topic_through_position(
     mqtt_mock_entry: MqttMockHAClientGenerator,
     message: str,
     asserted_state: str,
+    valve_position: int | None,
 ) -> None:
     """Test the controlling state via topic through position.
 
@@ -256,6 +261,7 @@ async def test_state_via_state_topic_through_position(
 
     state = hass.states.get("valve.test")
     assert state.state == asserted_state
+    assert state.attributes.get(ATTR_CURRENT_POSITION) == valve_position
 
 
 @pytest.mark.parametrize(

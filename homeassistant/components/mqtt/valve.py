@@ -256,7 +256,7 @@ class MqttValve(MqttEntity, ValveEntity):
                     _LOGGER.warning("Payload '%s' is not numeric", position_payload)
                     return
 
-                self._attr_current_valve_position = percentage_payload
+                self._attr_current_valve_position = min(max(percentage_payload, 0), 100)
             if state is None:
                 _LOGGER.warning(
                     (
